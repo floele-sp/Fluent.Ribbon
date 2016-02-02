@@ -65,8 +65,12 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="System.Xaml" />
+    <Reference Include="UIAutomationProvider" />
     <Reference Include="WindowsBase" />
     <Reference Include="WindowsFormsIntegration" />
+    <Reference Include="Xceed.Wpf.Toolkit">
+      <HintPath>..\..\..\..\Visual Studio 2013\Projects\CDBurnerXP\branches\starburnx2\Assemblies\Xceed.Wpf.Toolkit.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Shared\GlobalAssemblyInfo.cs">
@@ -85,6 +89,7 @@
     <Compile Include="Controls\ColorGallery.cs" />
     <Compile Include="Controls\ComboBox.cs" />
     <Compile Include="Controls\ContextMenu.cs" />
+    <Compile Include="Controls\QuickLaunchResultsEventArgs.cs" />
     <Compile Include="Controls\StartScreen.cs" />
     <Compile Include="Controls\WindowSteeringHelperControl.cs" />
     <Compile Include="Converters\ColorToSolidColorBrushConverter.cs" />
@@ -774,9 +779,11 @@
     <None Include="Themes\Office2013\Generic.txt" />
     <None Include="Themes\XamlCombine.exe" />
   </ItemGroup>
-  <ItemGroup />
   <ItemGroup>
     <None Include="Themes\Windows8\Generic.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Themes\Office2013\Images\Search.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

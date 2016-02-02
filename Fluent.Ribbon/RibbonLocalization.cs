@@ -601,6 +601,52 @@ namespace Fluent
 
         #endregion
 
+        #region Menu
+
+        string quickLaunchMenuGroup = "Menu";
+        private string quickLaunchMenuGroupProperty;
+
+        /// <summary>
+        /// Gets or sets the name of the menu search result group.
+        /// </summary>
+        public string QuickLaunchMenuGroup
+        {
+            get { return this.quickLaunchMenuGroupProperty ?? this.quickLaunchMenuGroup; }
+            set
+            {
+                if (this.quickLaunchMenuGroupProperty != value)
+                {
+                    this.quickLaunchMenuGroupProperty = value;
+                    this.RaisePropertyChanged("QuickLaunchMenuGroup");
+                }
+            }
+        }
+
+        #endregion
+
+        #region Quick Launch
+
+        string quickLaunch = "Quick launch (Ctrl+Q)";
+        private string quickLaunchProperty;
+
+        /// <summary>
+        /// Gets or sets the hint text in quick search text box
+        /// </summary>
+        public string QuickLaunch
+        {
+            get { return this.quickLaunchProperty ?? this.quickLaunch; }
+            set
+            {
+                if (this.quickLaunchProperty != value)
+                {
+                    this.quickLaunchProperty = value;
+                    this.RaisePropertyChanged("QuickLaunch");
+                }
+            }
+        }
+
+        #endregion
+
         #region Initialization
 
         /// <summary>

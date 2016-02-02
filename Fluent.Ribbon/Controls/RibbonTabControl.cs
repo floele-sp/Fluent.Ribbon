@@ -8,11 +8,15 @@
     using System.Diagnostics.CodeAnalysis;
     using System.Linq;
     using System.Runtime.InteropServices;
+    using System.Threading;
+    using System.Threading.Tasks;
     using System.Windows;
     using System.Windows.Controls;
     using System.Windows.Controls.Primitives;
+    using System.Windows.Data;
     using System.Windows.Input;
     using System.Windows.Media;
+    using System.Windows.Threading;
     using Fluent.Metro.Native;
 
     /// <summary>
@@ -31,6 +35,12 @@
 
         // ToolBar panel
         private Panel toolbarPanel;
+
+        private System.Windows.Controls.TextBox quicksearchTextBox;
+        private ListBox quickSearchResults;
+        private Popup quickSearchPopup;
+        private readonly DispatcherTimer quickSearchTimer = new DispatcherTimer();
+        private readonly Stack<string> searchRequests = new Stack<string>();
 
         #endregion
 
@@ -393,6 +403,274 @@
                     this.ToolbarPanel.Children.Add(this.toolBarItems[i]);
                 }
             }
+            this.quickSearchResults = GetTemplateChild("PART_QuickSearchResults") as ListBox;
+            if (this.quickSearchResults != null)
+            {
+                this.quickSearchResults.MouseUp += (s, e) => this.ExecuteSelectedQuickSearchCommand();
+            }
+
+            this.quickSearchPopup = GetTemplateChild("PART_QuickSearchPopup") as Popup;
+            if (this.quickSearchPopup != null)
+            {
+                this.quickSearchPopup.CustomPopupPlacementCallback = AlignToTargetRightEdge;
+            }
+
+            this.quicksearchTextBox = GetTemplateChild("PART_QuickSearch") as System.Windows.Controls.TextBox;
+            if (this.quicksearchTextBox != null)
+            {
+                this.quickSearchTimer.Interval = TimeSpan.FromSeconds(0.1);
+                this.quickSearchTimer.IsEnabled = true;
+                this.quickSearchTimer.Tick += OnQuickSearchTimerTick;
+
+                // Start search after type
+                this.quicksearchTextBox.TextChanged += (o, e) => this.searchRequests.Push(this.quicksearchTextBox.Text);
+
+                // Move up and down in result list
+                this.quicksearchTextBox.PreviewKeyDown += (o, e) =>
+                {
+                    if (e.Key == Key.Up)
+                    {
+                        this.quickSearchResults.SelectedIndex = this.quickSearchResults.SelectedIndex > 0 ? this.quickSearchResults.SelectedIndex - 1 : this.quickSearchResults.Items.Count - 1;
+                    }
+                    else if (e.Key == Key.Down)
+                    {
+                        this.quickSearchResults.SelectedIndex = this.quickSearchResults.SelectedIndex < this.quickSearchResults.Items.Count - 1 ? this.quickSearchResults.SelectedIndex + 1 : 0;
+                    }
+                    else if (e.Key == Key.Enter)
+                    {
+                        this.ExecuteSelectedQuickSearchCommand();
+                    }
+                };
+
+                // Abort search on ESC
+                this.quicksearchTextBox.KeyDown += (o, e) =>
+                {
+                    if (e.Key == Key.Escape)
+                    {
+                        this.quicksearchTextBox.Text = string.Empty;
+                    }
+                };
+
+                // Abort search when focus is lost
+                this.quicksearchTextBox.LostFocus += (o, e) => { this.quicksearchTextBox.Text = string.Empty; };
+            }
+        }
+
+        /// <summary>
+        /// Aligns the popup with the right edge of the placement target.
+        /// </summary>
+        private CustomPopupPlacement[] AlignToTargetRightEdge(Size popupSize, Size targetSize, Point offset)
+        {
+            CustomPopupPlacement placement1 = new CustomPopupPlacement(new Point(-(popupSize.Width - targetSize.Width), targetSize.Height), PopupPrimaryAxis.Horizontal);
+            return new[] { placement1 };
+        }
+
+        /// <summary>
+        /// Executes the selected command from the quick search result list.
+        /// </summary>
+        private void ExecuteSelectedQuickSearchCommand()
+        {
+            QuickLaunchResults.ResultItem item = this.quickSearchResults.SelectedItem as QuickLaunchResults.ResultItem;
+            if (item != null)
+            {
+                this.quicksearchTextBox.Text = string.Empty;
+                item.Execute(this.FindParentRibbon());
+            }
+            else
+            {
+                Ribbon parent = FindParentRibbon();
+                if (parent != null)
+                {
+                    parent.ConfirmQuickLaunchWithoutSelection(this.quicksearchTextBox.Text);
+                }
+            }
+        }
+
+        private void OnQuickSearchTimerTick(object sender, EventArgs e)
+        {
+            // Aktuellste Anfrage entnehmen
+            if (this.searchRequests.Count > 0)
+            {
+                // Weitere Anfragen ignorieren bis Ergebnis vorhanden
+                this.quickSearchTimer.IsEnabled = false;
+                string searchText = this.searchRequests.Pop();
+
+                // Ältere Anfragen ignorieren
+                this.searchRequests.Clear();
+
+                // Leere Suchanfragen nicht berücksichtigen
+                if (string.IsNullOrEmpty(searchText))
+                {
+                    this.quickSearchTimer.IsEnabled = true;
+                    this.quickSearchResults.ItemsSource = null;
+                    return;
+                }
+
+                Ribbon parentRibbon = this.FindParentRibbon();
+
+                Task<QuickLaunchResults>.Factory.StartNew(delegate
+                {
+                    QuickLaunchResults results = new QuickLaunchResults();
+
+                    if (parentRibbon != null)
+                    {
+                        parentRibbon.RequestCustomSearchResults(new QuickLaunchResults.QuickLaunchResultsEventArgs(results, searchText));
+                    }
+
+                    return results;
+                }).ContinueWith(t =>
+                {
+                    // Suche nach Ergebnissen im UI
+                    if (parentRibbon != null)
+                    {
+                        // Alle Menüpunkte durchsuchen
+                        foreach (RibbonTabItem tab in parentRibbon.Tabs)
+                        {
+                            foreach (RibbonGroupBox group in tab.Groups)
+                            {
+                                SearchSubItems(t.Result, group.Items.OfType<object>(), searchText, new[] { tab.Header as string, group.Header as string }, null);
+                            }
+                        }
+                    }
+
+                    if (this.quickSearchResults != null)
+                    {
+                        // Erst nach Tiefe des Pfades, dann nach Anzeigetext sortieren
+                        IEnumerable<QuickLaunchResults.ResultItem> items = t.Result.SearchResults.Take(20);
+
+                        CollectionView groupedView = (CollectionView)CollectionViewSource.GetDefaultView(items);
+                        PropertyGroupDescription groupDescription = new PropertyGroupDescription("Group");
+                        groupedView.SortDescriptions.Add(new SortDescription("PathLength", ListSortDirection.Ascending));
+                        groupedView.SortDescriptions.Add(new SortDescription("Text", ListSortDirection.Ascending));
+                        groupedView.GroupDescriptions.Add(groupDescription);
+
+                        this.quickSearchResults.ItemsSource = items;
+
+                        // Sicherstellen, dass bei durch Focusverlust geschlossenem Popup dieses wieder eingeblendet wird.
+                        this.quickSearchPopup.IsOpen = this.quickSearchResults.HasItems;
+                        this.quickSearchPopup.ClearValue(Popup.IsOpenProperty);
+                    }
+
+                    this.quickSearchTimer.IsEnabled = true;
+                }, CancellationToken.None, TaskContinuationOptions.NotOnCanceled, TaskScheduler.FromCurrentSynchronizationContext());
+            }
+        }
+
+        /// <summary>
+        /// Searches through a list of objects for Buttons and MenuItems.
+        /// </summary>
+        private void SearchSubItems(QuickLaunchResults results, IEnumerable<object> items, string searchText, IEnumerable<string> currentPath, object parentIcon)
+        {
+            foreach (Button button in items.OfType<Button>())
+            {
+                if (MatchesText(searchText, button.Header as string, button.ToolTip, Ribbon.GetAlternateName(button)))
+                {
+                    results.Add(button, currentPath, parentIcon);
+                }
+            }
+
+            foreach (ToggleButton button in items.OfType<ToggleButton>())
+            {
+                if (MatchesText(searchText, button.Header as string, button.ToolTip, Ribbon.GetAlternateName(button)))
+                {
+                    results.Add(button, currentPath, parentIcon);
+                }
+            }
+
+            foreach (RibbonToolBar toolbar in items.OfType<RibbonToolBar>())
+            {
+                SearchSubItems(results, toolbar.Children, searchText, currentPath, parentIcon);
+            }
+
+            foreach (DropDownButton dropDownButton in items.OfType<DropDownButton>())
+            {
+                SplitButton splitButton = dropDownButton as SplitButton;
+                // If SplitButton command is included in the drop down, ignore the second occurance.
+                ICommand firstCommand = null;
+
+                if (splitButton != null)
+                {
+                    if (MatchesText(searchText, dropDownButton.Header as string, dropDownButton.ToolTip, Ribbon.GetAlternateName(dropDownButton)))
+                    {
+                        results.Add(splitButton, currentPath, dropDownButton.Icon);
+                        firstCommand = splitButton.Command;
+                    }
+                }
+
+                foreach (MenuItem item in dropDownButton.Items.OfType<MenuItem>())
+                {
+                    if (MatchesText(searchText, dropDownButton.Header as string + " " + item.Header, dropDownButton.ToolTip, Ribbon.GetAlternateName(item)) && item.Command != firstCommand)
+                    {
+                        results.Add(item, currentPath.Union(new string[] { dropDownButton.Header as string }), item.Icon ?? dropDownButton.Icon);
+                    }
+
+                    List<string> newPath = new List<string>(currentPath);
+                    newPath.Add(dropDownButton.Header as string);
+                    newPath.Add(item.Header as string);
+
+                    SearchSubItems(results, item.Items.OfType<object>(), searchText, newPath, dropDownButton.Icon ?? parentIcon);
+                }
+            }
+
+            foreach (MenuItem item in items.OfType<MenuItem>())
+            {
+                if (MatchesText(searchText, item.Header as string, item.ToolTip, Ribbon.GetAlternateName(item)))
+                {
+                    results.Add(item, currentPath, item.Icon ?? parentIcon);
+                }
+
+                List<string> newPath = new List<string>(currentPath);
+                newPath.Add(item.Header as string);
+                SearchSubItems(results, item.Items.OfType<object>(), searchText, newPath, item.Icon ?? parentIcon);
+            }
+        }
+
+        /// <summary>
+        /// Returns true if the text contains all words of the search subject.
+        /// </summary>
+        private bool MatchesText(string searchRequest, string text, object tooltip, string alternateName)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            string[] words = searchRequest.ToUpper().Split(' ');
+            text = text.ToUpper();
+
+            // Also search in ScreenTip titles.
+            ScreenTip screenTip = tooltip as ScreenTip;
+            if (screenTip != null && screenTip.Title != null)
+            {
+                text += " " + screenTip.Title.ToUpper();
+            }
+
+            // Also search within alternate/legacy name (if any).
+            if (alternateName != null)
+            {
+                text += " " + alternateName.ToUpper();
+            }
+
+            // If only a string is set as ToolTip, include it too.
+            string tooltipText = tooltip as string;
+            if (!string.IsNullOrEmpty(tooltipText))
+            {
+                text += " " + tooltipText.ToUpper();
+            }
+
+            return words.All(word => text.Contains(word));
+        }
+
+        /// <summary>
+        /// Sets the keyboard focus to the quick launch control.
+        /// </summary>
+        internal void GoToQuickLaunch()
+        {
+            if (this.quicksearchTextBox != null)
+            {
+                this.quicksearchTextBox.Focus();
+                Keyboard.Focus(this.quicksearchTextBox);
+            }
         }
 
         /// <summary>
@@ -502,6 +780,19 @@
         #endregion
 
         #region Private methods
+
+        // Find parent ribbon
+        private Ribbon FindParentRibbon()
+        {
+            DependencyObject element = this;
+            while (LogicalTreeHelper.GetParent(element) != null)
+            {
+                element = LogicalTreeHelper.GetParent(element);
+                Ribbon ribbon = element as Ribbon;
+                if (ribbon != null) return ribbon;
+            }
+            return null;
+        }
 
         private static bool IsRibbonAncestorOf(DependencyObject element)
         {

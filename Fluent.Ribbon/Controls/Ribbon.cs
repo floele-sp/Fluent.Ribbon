@@ -410,6 +410,16 @@ namespace Fluent
         /// </summary>
         public event DependencyPropertyChangedEventHandler IsCollapsedChanged;
 
+        /// <summary>
+        /// Occurs when the quick launch is executing and allows to insert custom search results.
+        /// </summary>
+        public event EventHandler<QuickLaunchResults.QuickLaunchResultsEventArgs> RequestQuickLaunchResults;
+
+        /// <summary>
+        /// Occurs when the quick launch search has been confirmed, but no selection has been made. Can be used to activate search in other places.
+        /// </summary>
+        public event EventHandler<QuickLaunchResults.QuickLaunchResultsEventArgs> QuickLaunchConfirmedWithoutSelection;
+
         #endregion
 
         #region Fields
@@ -499,6 +509,21 @@ namespace Fluent
             var ribbon = (Ribbon)d;
 
             ribbon?.TitleBar?.InvalidateMeasure();
+        }
+
+        /// <summary>
+        /// Specifies an alternate name (legacy name) to search for when using the quick launch functionality.
+        /// </summary>
+        public static readonly DependencyProperty AlternateNameProperty = DependencyProperty.RegisterAttached("AlternateName", typeof(string), typeof(Ribbon), new PropertyMetadata(string.Empty));
+
+        public static string GetAlternateName(DependencyObject obj)
+        {
+            return (string)obj.GetValue(AlternateNameProperty);
+        }
+
+        public static void SetAlternateName(DependencyObject obj, string value)
+        {
+            obj.SetValue(AlternateNameProperty, value);
         }
 
         /// <summary>
@@ -1646,6 +1671,28 @@ namespace Fluent
             }
 
             this.ownerWindow = null;
+        }
+
+        /// <summary>
+        /// Invokes the RequestQuickLaunchResults events.
+        /// </summary>
+        internal void RequestCustomSearchResults(QuickLaunchResults.QuickLaunchResultsEventArgs eventArgs)
+        {
+            if (this.RequestQuickLaunchResults != null)
+            {
+                this.RequestQuickLaunchResults(this, eventArgs);
+            }
+        }
+
+        /// <summary>
+        /// Invokes the QuickLaunchConfirmedWithoutSelection event.
+        /// </summary>
+        internal void ConfirmQuickLaunchWithoutSelection(string text)
+        {
+            if (this.QuickLaunchConfirmedWithoutSelection != null)
+            {
+                this.QuickLaunchConfirmedWithoutSelection(this, new QuickLaunchResults.QuickLaunchResultsEventArgs(null, text));
+            }
         }
 
         private void OnFirstToolbarLoaded(object sender, RoutedEventArgs e)
