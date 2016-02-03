@@ -1852,6 +1852,10 @@ namespace Fluent
                     }
                 }
             }
+            else if (e.Key == Key.Q && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                this.TabControl.GoToQuickLaunch();
+            }
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
