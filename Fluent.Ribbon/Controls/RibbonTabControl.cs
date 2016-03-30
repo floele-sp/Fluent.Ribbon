@@ -431,14 +431,17 @@
                     if (e.Key == Key.Up)
                     {
                         this.quickSearchResults.SelectedIndex = this.quickSearchResults.SelectedIndex > 0 ? this.quickSearchResults.SelectedIndex - 1 : this.quickSearchResults.Items.Count - 1;
+                        e.Handled = true;
                     }
                     else if (e.Key == Key.Down)
                     {
                         this.quickSearchResults.SelectedIndex = this.quickSearchResults.SelectedIndex < this.quickSearchResults.Items.Count - 1 ? this.quickSearchResults.SelectedIndex + 1 : 0;
+                        e.Handled = true;
                     }
                     else if (e.Key == Key.Enter)
                     {
                         this.ExecuteSelectedQuickSearchCommand();
+                        e.Handled = true;
                     }
                 };
 
