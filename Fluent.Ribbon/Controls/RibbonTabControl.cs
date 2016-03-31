@@ -638,30 +638,30 @@
                 return false;
             }
 
-            string[] words = searchRequest.ToUpper().Split(' ');
-            text = text.ToUpper();
+            string[] words = searchRequest.Split(' ');
 
             // Also search in ScreenTip titles.
             ScreenTip screenTip = tooltip as ScreenTip;
             if (screenTip != null && screenTip.Title != null)
             {
-                text += " " + screenTip.Title.ToUpper();
+                text += " " + screenTip.Title;
             }
 
             // Also search within alternate/legacy name (if any).
             if (alternateName != null)
             {
-                text += " " + alternateName.ToUpper();
+                text += " " + alternateName;
             }
 
             // If only a string is set as ToolTip, include it too.
             string tooltipText = tooltip as string;
             if (!string.IsNullOrEmpty(tooltipText))
             {
-                text += " " + tooltipText.ToUpper();
+                text += " " + tooltipText;
             }
 
-            return words.All(word => text.Contains(word));
+            // Not "Ordinal" (or Contains(), which uses it), culture specific matches (eg. ss == ß) are desired.
+            return words.All(word => text.IndexOf(word, StringComparison.InvariantCultureIgnoreCase) != -1);
         }
 
         /// <summary>
